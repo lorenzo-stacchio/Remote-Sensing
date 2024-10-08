@@ -91,7 +91,7 @@ class Classifier(nn.Module):
 
 
     def forward(self, x):
-        if self.embedder_type == "Clip_ViT":
+        if self.embedder_type == Model_type.Clip_ViT:
             x = self.embedder.encode_image(x)
         else:
             x = self.embedder(x)
@@ -113,15 +113,14 @@ def parser():
 
 if __name__ == "__main__":
     device = "cuda:0"
-    batch_size = 32
+    batch_size = 256
     set_seed(42)
     print("------LOADING DATASETS------")
     dataset_path = "/home/vrai/Remote Sensing/dataset/DATASET WHU-RS19/"
-    embedders = [Model_type.DinoV2,Model_type.Resnet50,Model_type.ViT,Model_type.Clip_ViT]
+    # embedders = [Model_type.DinoV2,Model_type.Resnet50,Model_type.ViT,Model_type.Clip_ViT]
+    embedders = [Model_type.Resnet50,Model_type.ViT,Model_type.Clip_ViT,Model_type.DinoV2]
 
-    # embedders = ["Clip_ViT"]
     epochs = 10
-
 
     for embedder in embedders:
         # training_data_config = config.TRAININGDATA
@@ -155,6 +154,8 @@ if __name__ == "__main__":
         best_accuracy = float("-inf")
         log_dir = f"classification/logs/{exp_name}/"
         writer = SummaryWriter(log_dir)
+        set_seed(42)
+
         for epoch in tqdm.tqdm(range(epochs), desc="train"):
 
             running_loss = 0.0

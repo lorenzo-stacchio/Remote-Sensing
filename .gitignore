@@ -5,3 +5,4 @@ classification/my_weights/*.pth
 classification/logs*/*
 */__pycache__/*
 __pycache__/
+classification/recaps/logs*/*

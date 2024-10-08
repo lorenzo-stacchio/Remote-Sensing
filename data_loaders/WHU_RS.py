@@ -9,7 +9,7 @@ import glob
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 from sklearn.model_selection import train_test_split
 from feature_extractor import Model_type
-
+import os
 
 class WHU_RS_19(Dataset):
 
@@ -35,10 +35,11 @@ class WHU_RS_19(Dataset):
     def create_df(self,dataset_path):
         # print(dataset_path)
         files = [x for x in glob.glob(dataset_path + "*/*jpg")]
+        files = sorted(files, key=os.path.basename)
         df = pd.DataFrame(columns=["image_path", "class","partition"])
         df["image_path"] = files
         df["class"] = df["image_path"].apply(lambda x: x.split("/")[-2])
-        train_df, test_df = train_test_split(df, test_size=0.3, random_state=42)
+        train_df, test_df = train_test_split(df, test_size=0.3, random_state=42,stratify=df["class"])
         train_df["partition"] = ["train"] * len(train_df["partition"])
         test_df["partition"] = ["test"] * len(test_df["partition"])
 
