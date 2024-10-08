@@ -1,0 +1,7 @@
+classification/logs/*
+data_loaders/test_dataloaders/*
+dataset/DATASET WHU-RS19/*
+classification/my_weights/*.pth
+classification/logs*/*
+*/__pycache__/*
+__pycache__/
