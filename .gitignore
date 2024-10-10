@@ -6,3 +6,4 @@ classification/logs*/*
 */__pycache__/*
 __pycache__/
 classification/recaps/logs*/*
+dataset/RECSIS45/*

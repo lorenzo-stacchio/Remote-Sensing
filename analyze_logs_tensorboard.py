@@ -28,7 +28,7 @@ for log in all_logs:
     plt.plot(steps, values, label=os.path.basename(log))
 
 # Customize plot
-plt.title("Test Accuracy Over Time for Test Accuracy")
+plt.title("Test Accuracy Over Epochs")
 plt.xlabel("Steps")
 plt.ylabel("Test Accuracy")
 plt.legend(loc="best")
