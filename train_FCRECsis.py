@@ -1,6 +1,4 @@
 from torch.utils.tensorboard import SummaryWriter
-exit()
-
 import numpy as np
 import random
 import argparse
@@ -124,20 +122,19 @@ if __name__ == "__main__":
     image_dir_path = dataset_path + "NWPU-RESISC45/"
     # embedders = [Model_type.DinoV2,Model_type.Resnet50,Model_type.ViT,Model_type.Clip_ViT]
     embedders = [Model_type.Resnet50,Model_type.ViT,Model_type.Clip_ViT,Model_type.DinoV2]
-
-    epochs = 10
+    #embedders = [Model_type.Clip_ViT,Model_type.DinoV2]
+    epochs = 20
 
     for embedder in embedders:
        
         # training_data_config = config.TRAININGDATA
         train_dataset = RECSIS_45(dataset_path = dataset_path, image_dir_path=image_dir_path, device="cuda", split="train", model_type=embedder)
         train_dataloader = DataLoader(
-            dataset=train_dataset, shuffle=False, batch_size=1)
-
+            dataset=train_dataset, shuffle=False, batch_size=batch_size)
 
         test_dataset = RECSIS_45(dataset_path = dataset_path, image_dir_path=image_dir_path, device="cuda", split="test", model_type=embedder)
         test_dataloader = DataLoader(
-            dataset=test_dataset, shuffle=False, batch_size=1)
+            dataset=test_dataset, shuffle=False, batch_size=batch_size)
 
         print(f"------START OPTIMIZATION {embedder.name}------")
 

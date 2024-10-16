@@ -5,16 +5,11 @@ conda create -n remote_sensing_feature_dino python=3.10 anaconda -y
 conda activate remote_sensing_feature_dino
 
 ## 
-pip install torch==1.10.1+cu111 torchvision==0.11.2+cu111 torchaudio==0.10.1 -f https://download.pytorch.org/whl/cu111/torch_stable.html
+conda install pytorch==2.0.0 torchvision==0.15.0 torchaudio==2.0.0 pytorch-cuda=11.8 -c pytorch -c nvidia
 
-pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116
+pip install opencv-python tqdm torchmetrics tensorboard pytorch_warmup
 
-pip install torch==2.0.0 torchvision==0.15.1 torchaudio==2.0.1 --index-url https://download.pytorch.org/whl/cu118
-
-pip install opencv-python tqdm torchmetrics tensorboard
-
-pip install tensorboard
-
+pip install git+https://github.com/openai/CLIP.git
 
 <!-- conda remove --name remote_sensing_feature_dino --all -->
 

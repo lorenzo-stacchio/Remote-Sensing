@@ -7,3 +7,5 @@ classification/logs*/*
 __pycache__/
 classification/recaps/logs*/*
 dataset/RECSIS45/*
+dataset/DOTA/*/*
+*.zip
