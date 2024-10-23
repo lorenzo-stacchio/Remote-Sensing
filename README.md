@@ -53,3 +53,15 @@ unrar x -r NWPU-RESISC45.rar
 scp "C:\\Users\\Chiqu\\Downloads\\NWPU-RESISC45.rar" LStacchio@193.205.130.253:"'/disks/disk3/LorenzoStacchio/Remote Sensing/dataset/RECSIS45/'"
 
 find . -type f | wc -l
+
+
+
+### PYTHON
+in data_loaders
+
+wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/utils.py
+
+
+## DATASETS
+
+DIOR: https://drive.google.com/file/d/16JeLkqdOA1oF0WtyYdKnJhq3i9eEcX4_/view

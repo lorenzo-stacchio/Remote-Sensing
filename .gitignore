@@ -9,3 +9,5 @@ classification/recaps/logs*/*
 dataset/RECSIS45/*
 dataset/DOTA/*/*
 *.zip
+dataset/PennFudanPed/*
+classification/weights_objd/*

@@ -21,7 +21,8 @@ from torchvision.io import read_image
 from torchvision.transforms.v2 import functional as F
 from torchvision.transforms import v2 as T
 from torchvision.transforms import ToPILImage
-from utils import set_seed 
+# from utils import set_seed 
+from data_loaders.utils import collate_fn
 
 ## MANAGE BBOX AUGMENTATIONS
 
@@ -102,8 +103,11 @@ class DOTAv1(Dataset):
                 classes = [classes[index] for index in not_hard_index]
                 boxes = [boxes[index] for index in not_hard_index]
 
-            # filter boxes wrong top-left, bottom-right
-            boxes_idx = [idx for idx,box in enumerate(boxes) if box[0] < box[2] and box[1] < box[3] ] 
+            # filter boxes wrong top-left, bottom-right+
+            # margin offsetting for area to avoid null boxes when resizing
+            margin_x = 50 
+            margin_y = 50
+            boxes_idx = [idx for idx,box in enumerate(boxes) if (box[0] + margin_x < box[2]) and (box[1] + margin_y < box[3])] 
             # print(boxes_idx)
             hard_objects = [hard_objects[index] for index in boxes_idx]
             classes = [classes[index] for index in boxes_idx]
@@ -113,19 +117,12 @@ class DOTAv1(Dataset):
                 errors +=1
                 # print("NON-CONSIDERED LABEL due to lenght (only 1s) or errors", image_path)
                 continue
-            
-            # assert len(boxes) > 0, image_path continue # do not add this row
-            
+                        
             dict_lists_dataframe["image_path"].append(image_path)
             dict_lists_dataframe["partition"].append(partition)
             dict_lists_dataframe["classes"].append(classes)
             dict_lists_dataframe["hard_objects"].append(hard_objects)
             dict_lists_dataframe["boxes"].append(boxes)
-
-            # print(dict_lists_dataframe)
-            # exit()
-            # dict_lists_dataframe["partition"].append(partition)
-            # dict_lists_dataframe["partition"].append(partition)
 
         
         for col in df.columns:
@@ -134,7 +131,7 @@ class DOTAv1(Dataset):
         print(f"NON CONSIDERED ITEMS {errors}")
         return df 
         
-    def __init__(self, dataset_path, split, device, model_type, filter_hard_object=True):
+    def __init__(self, dataset_path, split, device, model_type, image_size, filter_hard_object=True):
         assert dataset_path is not None
         self.device = device
         self.filter_hard_object = filter_hard_object
@@ -142,13 +139,7 @@ class DOTAv1(Dataset):
         self.partition = split
         self.dataframe_csv = self.get_split(dataset_path, self.partition)
         
-        self.size = 1024
-        
-        # classes = set()
-        # for v in self.dataframe_csv["classes"]:
-        #     # print(v)
-        #     for cls_ in v:
-        #          classes.add(cls_)
+        self.size = image_size
         
         self.dict_labels = {
             'soccer-ball-field': 0,
@@ -211,13 +202,18 @@ class DOTAv1(Dataset):
         # print(boxes)
         # image = Image.open(name)
         img = read_image(img_path)
+        ## FIX POSSIBLE BAD CHANNELS
+        if img.shape[0] == 1:  # CxHxW format, so we check the number of channels (C)
+            img = img.repeat(3, 1, 1)  # Repeat the single channel 3 times to make it RGB
+        elif img.shape[0] == 4:  # If the image has an alpha channel (e.g., RGBA), remove it
+            img = img[:3, :, :]  # Keep only the first three channels (RGB)
         # print("IMG SIZE", img.size())
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
         
         target = {}
         target["boxes"] = tv_tensors.BoundingBoxes(boxes, format="XYXY", canvas_size=F.get_size(img))
         target["labels"] =  torch.tensor(labels, dtype=torch.int64)
-        target["area"] =  area
+        target["area"] =   torch.tensor(area, dtype=torch.int64)
         
         # target["image_id"] = image_id
         # target["area"] = area
@@ -234,10 +230,10 @@ class DOTAv1(Dataset):
 
         # data = {'image': image.to(self.device), "image_path":name, 'class': self.make_label(label)}
         
-        # print("BEFORE", img_path, img.size(), target["boxes"])
+        # print("\n\nBEFORE", img_path, target["area"], "\n\n")
         if self.transforms is not None:
             img, target_training = self.transforms(img, target)
-        # print("AFTER", img_path, img.size(), target["boxes"])
+        # print("\n\nAFTER", img_path, target_training["area"], "\n\n")
         # print(target)
         # exit()
 
@@ -245,7 +241,9 @@ class DOTAv1(Dataset):
         # coordinates = [item for sublist in [[f"x_{i}", f"y_{i}"] for i, j in zip(range(4), range(4))] for item in sublist]
         # data.update({coord:row_index[coord] for coord in coordinates})
 
-        return img, img_path, target, target_training
+        # return img, img_path, target, target_training # --> for debugging
+        return img, img_path, target_training
+
 
     def __len__(self):
         return len(self.dataframe_csv)
@@ -259,19 +257,20 @@ class DOTAv1(Dataset):
 
 
 if __name__ == "__main__":
-    set_seed(42)
+    # set_seed(42)
     
     home_dir = "/home/vrai/disk2/LorenzoStacchio/Remote Sensing/Remote Sensing/"
     dataset_path = f"{home_dir}dataset/DOTA/FIXED/"
     # training_data_config = config.TRAININGDATA
+    debug = False
     
-    train_dataset = DOTAv1(dataset_path = dataset_path, device="cpu", split="train", model_type=Model_type.Resnet50)
+    train_dataset = DOTAv1(dataset_path = dataset_path, device="cuda", split="train", model_type=Model_type.Resnet50)
     train_dataloader = DataLoader(
-        dataset=train_dataset, num_workers=1, shuffle=False, batch_size=1)
+        dataset=train_dataset, num_workers=1, shuffle=False, batch_size=8, collate_fn=collate_fn)
 
-    test_dataset = DOTAv1(dataset_path = dataset_path, device="cpu", split="val", model_type=Model_type.Resnet50)
+    test_dataset = DOTAv1(dataset_path = dataset_path, device="cuda", split="val", model_type=Model_type.Resnet50)
     test_dataloader = DataLoader(
-        dataset=test_dataset, num_workers=1, shuffle=False, batch_size=1)
+        dataset=test_dataset, num_workers=1, shuffle=False, batch_size=4, collate_fn = collate_fn)
 
     out_dir = f"{home_dir}data_loaders/test_dataloaders/dotav1/"
     if not os.path.exists(out_dir):
@@ -283,17 +282,20 @@ if __name__ == "__main__":
     selected_loader = train_dataloader
     selected_dataset = train_dataset
     
-    for idx_batch, (image, img_path, target, target_training) in enumerate(selected_loader):
+    for idx_batch, (images, img_paths, target_training) in enumerate(selected_loader):
         # print(image.shape)
         # print(img_path)
         # print(target)
-        basename = os.path.basename(img_path[0]).split(".")[0]
-        # print("TESTING", img_path[0])
+        basename = os.path.basename(img_paths[0]).split(".")[0]
+        ## CONSIDER THE FIST ONE from the collate function to TEST IF ALL IT'S OK!
+        image = images[0]
+        if debug:
+            target = target[0]
+        target_training = target_training[0]
 
+        ## PLOT TESTS
         boxes = target_training["boxes"].to(torch.int32)
-        area = target_training["area"].to(torch.int32)
         cls_ = target_training["labels"].to(torch.int32)
-        # print(boxes)
 
         image_tensor = image
         image_tensor = selected_dataset.denormalize(image_tensor)
@@ -301,51 +303,34 @@ if __name__ == "__main__":
         image_pil = ToPILImage()(image_tensor)
         image_pil.save(f'{out_dir}/{basename}_{idx_batch}.jpg')
         box_np = boxes.cpu().numpy()
-        area_np = area.cpu().numpy()
+        # area_np = area.cpu().numpy()
         cls_np = cls_.cpu().numpy()
-        
-        # ORIGINAL TARGET
-        boxes_or_target = target["boxes"].to(torch.int32)
-        cls_or_target = target["labels"].to(torch.int32)
-        box_np_or_target = boxes_or_target.cpu().numpy()
-        cls_np_or_target = cls_or_target.cpu().numpy()
+        print(box_np.shape, cls_np.shape)
+
+       
         
         # print(box_np.shape)
-        for idx_box, (box,area,clas) in enumerate(zip(box_np[0],area_np[0],cls_np[0])):
+        for idx_box, (box,clas) in enumerate(zip(box_np,cls_np)):
             # print(f"\n ------ BOX: {box} ORIGINAL BOX {box_np_or_target[0][idx_box]} CLASS {selected_dataset.reverse_dict_labels[clas.item()]}")
-            # print(image_pil.size)
             image_pil_temp = image_pil.crop(tuple(box))
-            # print(image_pil_temp.size)
             image_pil_temp.save(f'{out_dir}/{basename}_{idx_batch}_{idx_box}.jpg')
-            # break
-        # if idx > 10:
-        
-        # image_path = "dataset/DOTA/FIXED/val/images/P2718.png"
-        # Original box
-        # box = (1939, 2102, 2019, 2148)  # ground-track-field 0
-       
-        # List of tuples containing coordinates
-        # coordinates = [
-        #     (1939, 2102, 2020, 2105, 2019, 2148, 1939, 2144, 'ground-track-field', 0),
-        #     (1070, 1344, 1102, 1348, 1095, 1398, 1063, 1394, 'ground-track-field', 0),
-        #     (1986, 1641, 2026, 1636, 2040, 1710, 2000, 1717, 'ground-track-field', 0),
-        #     (2606, 925, 2656, 925, 2656, 939, 2606, 939, 'bridge', 0),
-        #     (2478, 1027, 2488, 1022, 2503, 1046, 2493, 1051, 'bridge', 0),
-        #     (576, 1200, 615, 1200, 615, 1274, 574, 1271, 'ground-track-field', 0)
-        # ]
-       
-        # Open the image
-        image_pil = Image.open(img_path[0])
-        image_pil.save(f'{out_dir}/{basename}_{idx_batch}_ORIGINAL.jpg')
-        for idx_box, (box,clas) in enumerate(zip(box_np_or_target[0],cls_np_or_target[0])):
-            # print(box, clas)
-            image_pil_temp = image_pil.crop(tuple(box))
 
-            # Crop the image
-            # image_pil_temp = image_pil.crop(box)
-            
-            # Save the cropped image
-            image_pil_temp.save(f'{out_dir}/{basename}_{idx_batch}_{idx_box}_ORIGINAL.jpg')
-            # print(f'Cropped image {idx_box} size: {image_pil_temp.size}')
+        ## DEBUG
+        if debug:
+            # ORIGINAL TARGET
+            boxes_or_target = target["boxes"].to(torch.int32)
+            cls_or_target = target["labels"].to(torch.int32)
+            box_np_or_target = boxes_or_target.cpu().numpy()
+            cls_np_or_target = cls_or_target.cpu().numpy()
+            # Open the image
+            image_pil = Image.open(img_paths[0])
+            image_pil.save(f'{out_dir}/{basename}_{idx_batch}_ORIGINAL.jpg')
+            for idx_box, (box,clas) in enumerate(zip(box_np_or_target,cls_np_or_target)):
+                # print(box, clas)
+                image_pil_temp = image_pil.crop(tuple(box))
+                
+                # Save the cropped image
+                image_pil_temp.save(f'{out_dir}/{basename}_{idx_batch}_{idx_box}_ORIGINAL.jpg')
+                # print(f'Cropped image {idx_box} size: {image_pil_temp.size}')
         if idx_batch > 2:
             break
