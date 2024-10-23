@@ -17,8 +17,11 @@ def extract_variable(logdir, variable = "test_accuracy"):
 m_dir = '/home/vrai/disk2/LorenzoStacchio/Remote Sensing/Remote Sensing/classification/'
 
 # log_dir = f'{m_dir}logs/'
-exp = "RECSIS45"
-log_dir = f'{m_dir}logs/{exp}/'
+# exp = "RECSIS45"
+# log_dir = f'{m_dir}logs/{exp}/'
+
+exp = "Clip_ViT_30"
+log_dir = f'{m_dir}logs_objd/{exp}/'
 
 # Iterate through each subdirectory (one log file per run)
 all_logs = [os.path.join(log_dir, d) for d in os.listdir(log_dir) if os.path.isdir(os.path.join(log_dir, d))]

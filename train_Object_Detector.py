@@ -102,19 +102,55 @@ class ViTBackbone(nn.Module):
         features = features[:, 1:, :] 
         # reshape by patches
         # print("VIT FEATURES ", features.shape)
-
         if self.type_vit == "vit_base_patch32_clip_448.laion2b_ft_in12k_in1k":
             # features = features.reshape(features.shape[0], 14, 14, 768)
             features = features.reshape(features.shape[0], 14, 14, 768)
         elif self.type_vit == "vit_base_patch14_dinov2":
             features = features.reshape(features.shape[0], 37, 37, 768)
+        elif self.type_vit == "vit_base_patch14_reg4_dinov2":
+            features = features.reshape(features.shape[0], 37, 37, 768)
+        elif self.type_vit == "vit_base_patch32_384":
+            features = features.reshape(features.shape[0], 12, 12, 768)
         features = features.permute(0, 3, 1, 2)
-        # print(features.shape)
 
-        # Extract only the CLS token (the first element in the features)
-        return features  # Adjust this if needed to match expected FasterRCNN input
+        return features
 
 
+class DinoBackbone(nn.Module):
+    def __init__(self, type_dino):
+        super(DinoBackbone, self).__init__()
+        # Load the ViT model from timm with pre-trained weights
+        # self.vit = timm.create_model('vit_base_patch16_224', pretrained=True, num_classes=0, features_only=True)
+        self.type_dino = type_dino
+        torch.hub._validate_not_a_forked_repo=lambda a,b,c: True
+        self.dino = torch.hub.load('facebookresearch/dinov2', self.type_dino).to(device=device)            
+        # print(self.dino)
+        
+    def forward(self, x):
+        # Get all the features from ViT
+        # features = self.vit(x)
+        # print("iMAGE SHAPE DINO", x.shape)
+        # if 544 in list(x.shape):
+        #     print(x.shape)
+        #     exit()
+
+        features_total = self.dino.forward_features(x)
+        ## possible outs: "x_norm_clstoken", "x_norm_regtokens", "x_norm_patchtokens", "x_prenorm", "masks"
+        # print(len(features))
+        # for el in features:
+        #     print(el.shape)
+        features = features_total["x_norm_patchtokens"]
+        # print(patch_tokens.shape)
+        ## remove class token
+        # features = features[:, 1:, :] 
+        # reshape by patches
+        # print("dino FEATURES ", features.shape)
+        if self.type_dino == "dinov2_vitb14":
+            features = features.reshape(features.shape[0], 37, 37, 768)
+        features = features.permute(0, 3, 1, 2)
+
+        return features
+    
 class Detector(nn.Module):
     # NUOVO EMBEDDER INTERESSANTE: https://github.com/Kartik-3004/facexformer
 
@@ -122,19 +158,15 @@ class Detector(nn.Module):
         super(Detector, self).__init__()
         self.device = device  # "cuda" if torch.cuda.is_available() else "cpu"
         self.embedder_type = embedder
-        # if self.embedder_type == Model_type.DinoV2:
-        #     # LOVING YOU https://stackoverflow.com/questions/68901236/urllib-error-httperror-http-error-403-rate-limit-exceeded-when-loading-resnet1
-        #     torch.hub._validate_not_a_forked_repo=lambda a,b,c: True
-        #     self.embedder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').to(device=device)
-        #     # print(self.embedder)
-        #     # self.init_dimension = 768
         self.image_size = 0
+        self.size_divisible  = 0
         if self.embedder_type == Model_type.Resnet50:
             self.embedder = models.resnet50(pretrained=True)
             print(self.embedder)
             self.embedder = nn.Sequential(*list(self.embedder.children())[:-2])  # Remove last fully connected layers
             self.embedder.out_channels = 2048
             self.image_size = 448
+            self.size_divisible = 32 # default r-cnn
             # self.embedder.la
             # self.init_dimension = 2048
         # elif self.embedder_type == Model_type.ViT:
@@ -157,19 +189,35 @@ class Detector(nn.Module):
             # self.embedder.float() # casted to have float32 instead of float16
             self.embedder.out_channels = 768
             self.image_size = 448
+            self.size_divisible = 32 # default r-cnn
+
             # self.init_dimension = 512
         elif self.embedder_type == Model_type.DinoV2:
-            # self.embedder = ViTBackbone(type_vit = "hf_hub:timm/vit_large_patch14_dinov2.lvd142m")
-            self.embedder = ViTBackbone(type_vit = "vit_base_patch14_dinov2")
-            self.image_size = 518
+            # self.embedder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14_reg')
+            # LOVING YOU https://stackoverflow.com/questions/68901236/urllib-error-httperror-http-error-403-rate-limit-exceeded-when-loading-resnet1
+            # torch.hub._validate_not_a_forked_repo=lambda a,b,c: True
+            # self.embedder = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14').to(device=device)            
+            self.embedder = DinoBackbone("dinov2_vitb14")
             self.embedder.out_channels = 768
+            self.image_size = 518
+            # exception due to image size
+            self.size_divisible = 37
+           
+            # print(self.embedder)
+        elif self.embedder_type == Model_type.ViT:
+            # self.embedder = ViTBackbone(type_vit = "hf_hub:timm/vit_large_patch14_dinov2.lvd142m")
+            self.embedder = ViTBackbone(type_vit = "vit_base_patch32_384")
+            self.image_size = 384
+            self.embedder.out_channels = 768
+            self.size_divisible = 32 # default r-cnn
+
 
         # print(self.embedder)
         print("------- SANITY CHECK -------")
         random_image_tensor = torch.rand(1, 3, self.image_size, self.image_size, dtype=torch.float32)#.to("cuda")
         # print(random_image_tensor.dtype)        
-        random_image_tensor = random_image_tensor.to("cuda")
-        self.embedder = self.embedder.to("cuda") 
+        random_image_tensor = random_image_tensor.to(self.device)
+        self.embedder = self.embedder.to(self.device) 
         out = self.embedder(random_image_tensor)
         print("SHAPE FOR RCNN", out.shape)
         print("------- END SANITY CHECK -------")
@@ -189,33 +237,23 @@ class Detector(nn.Module):
             sampling_ratio=2
         )
         
-        print("IMAGE SIZE BACKBONE", self.image_size)
+        # print("IMAGE SIZE BACKBONE", self.image_size)
         
         self.model = FasterRCNN(self.embedder, num_classes=classes,  
                            rpn_anchor_generator=self.anchor_generator,
-                           box_roi_pool=self.roi_pooler, min_size=self.image_size)#, max_size = )
+                           box_roi_pool=self.roi_pooler, min_size=self.image_size, max_size = self.image_size,
+                           size_divisible = self.size_divisible)
         
         # for name, param in self.model.named_parameters():
         #     print(name, param.requires_grad)
 
     def forward(self, images, targets = None):
-        # print("\n\nSHAPE ", images[0].shape, "\n\n")
+        print("\n\nSHAPE IN FIRST STEP DETECTOR", images[0].shape, "\n\n")
         
         if targets:
             return self.model(images,targets)
         else:
             return self.model(images)
-
-
-
-# Set device
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-set_seed(42)
-    
-home_dir = "/home/vrai/disk2/LorenzoStacchio/Remote Sensing/Remote Sensing/"
-dataset_path = f"{home_dir}dataset/DOTA/FIXED/"
-# training_data_config = config.TRAININGDATA
 
 
 
@@ -272,10 +310,9 @@ def train_model(model, data_loader, test_dataloader, epochs, embedder_name):
     log_dir = f"classification/logs_objd/{exp_name}/"
     writer = SummaryWriter(log_dir)
     set_seed(42)
-
     model = model.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+    optimizer = optim.Adam(model.parameters(), lr=1e-2)
+    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.1)
     best_precision = 0  # Initialize best precision
 
     for epoch in range(epochs):
@@ -297,7 +334,6 @@ def train_model(model, data_loader, test_dataloader, epochs, embedder_name):
             # Forward pass
             loss_dict = model(images, targets)
             losses = sum(loss for loss in loss_dict.values())
-            # print(losses)
             
             # Backward pass
             optimizer.zero_grad()
@@ -326,33 +362,45 @@ def train_model(model, data_loader, test_dataloader, epochs, embedder_name):
                 print(f"Precision did not improve, still {best_precision}")
 
             
+if __name__ == "__main__":
+    # Set device
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = "cuda"
 
-# Train different models and compare
-# backbone_types = [Model_type.Resnet50]
-# backbone_types = [Model_type.DinoV2]
-backbone_types = [Model_type.Clip_ViT]
-# backbone_types = ['resnet', 'clip', 'dino']
+    set_seed(42)
+        
+    home_dir = "/home/vrai/disk2/LorenzoStacchio/Remote Sensing/Remote Sensing/"
+    dataset_path = f"{home_dir}dataset/DOTA/FIXED/"
+    # training_data_config = config.TRAININGDATA
 
-num_classes = 15  # make a json and load it
+    # Train different models and compare
+    # backbone_types = [Model_type.Resnet50]
+    backbone_types = [Model_type.DinoV2]
+    # backbone_types = [Model_type.ViT]
+    # backbone_types = [Model_type.Clip_ViT]
+    # backbone_types = ['resnet', 'clip', 'dino']
 
-for backbone_type in backbone_types:
-    print(f"\nTraining with backbone: {backbone_type}")
-    # model = create_model(backbone_type, num_classes=num_classes)
-    model = Detector(embedder= backbone_type, model_weight_path = "", 
-                     device="cuda", classes = num_classes)
-    batch_size =  16
+    num_classes = 15  # make a json and load it
+    epochs = 3
+    for backbone_type in backbone_types:
+        print(f"\nTraining with backbone: {backbone_type}")
+        # model = create_model(backbone_type, num_classes=num_classes)
+        model = Detector(embedder= backbone_type, model_weight_path = "", 
+                        device=device, classes = num_classes)
+        
+        batch_size =  8
 
-    train_dataset = DOTAv1(dataset_path = dataset_path, image_size = model.image_size,
-                           device="cuda", split="train", model_type=Model_type.Resnet50)
-    train_dataloader = DataLoader(
-        dataset=train_dataset, num_workers=1, shuffle=True, batch_size=batch_size, collate_fn = collate_fn)
+        train_dataset = DOTAv1(dataset_path = dataset_path, image_size = model.image_size,
+                            device=device, split="train", model_type=Model_type.Resnet50)
+        
+        train_dataloader = DataLoader(
+            dataset=train_dataset, num_workers=1, shuffle=True, batch_size=batch_size, collate_fn = collate_fn)
 
+        test_dataset = DOTAv1(dataset_path = dataset_path, image_size = model.image_size,
+                            device=device, split="val", model_type=Model_type.Resnet50)
+        test_dataloader = DataLoader(
+            dataset=test_dataset, num_workers=1, shuffle=True, batch_size=batch_size, collate_fn = collate_fn)
 
-    test_dataset = DOTAv1(dataset_path = dataset_path, image_size = model.image_size,
-                          device="cuda", split="val", model_type=Model_type.Resnet50)
-    test_dataloader = DataLoader(
-        dataset=test_dataset, num_workers=1, shuffle=True, batch_size=batch_size, collate_fn = collate_fn)
+        train_model(model, train_dataloader, test_dataloader, epochs=epochs,  embedder_name=backbone_type.name)
 
-    train_model(model, train_dataloader, test_dataloader, epochs=10,  embedder_name=backbone_type.name)
-
-print("Training completed for all models.")
+    print("Training completed for all models.")
